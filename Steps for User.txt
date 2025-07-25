@@ -1,0 +1,9 @@
+Save all the files in a single directory(folder)
+
+Run this command for activating local server:
+python -m http.server 8000
+
+Go to any browser and type:
+http://localhost:8000/index2.html
+
+You can access the UI and system in the backend.

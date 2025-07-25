@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Enhanced Stock Recommendation Interface</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- React and ReactDOM -->
+    <script src="https://cdn.jsdelivr.net/npm/react@18.2.0/umd/react.development.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/react-dom@18.2.0/umd/react-dom.development.js"></script>
+    <!-- Babel for JSX -->
+    <script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.22.9/babel.min.js"></script>
+    <!-- PapaParse for CSV parsing -->
+    <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+</head>
+<body class="bg-gray-100 dark:bg-gray-900 min-h-screen flex items-center justify-center transition-colors">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        // List of 34 stocks
+        const stocks = [
+            'ADANIPORTS', 'AXISBANK', 'BAJAJFINSV', 'BAJFINANCE', 'BHARTIARTL', 'BPCL',
+            'BRITANNIA', 'CIPLA', 'COALINDIA', 'DRREDDY', 'EICHERMOT', 'GAIL', 'GRASIM',
+            'HCLTECH', 'HDFC', 'HDFCBANK', 'HINDUNILVR', 'ICICIBANK', 'INFY', 'ITC',
+            'JSWSTEEL', 'KOTAKBANK', 'LT', 'MARUTI', 'NESTLEIND', 'POWERGRID', 'SBIN',
+            'SHREECEM', 'TATAMOTORS', 'TCS', 'TECHM', 'VEDL', 'WIPRO', 'ZEEL'
+        ];
+
+        // Risk profiles
+        const riskProfiles = ['Risk_Averse', 'Risk_Neutral', 'Risk_Tolerant'];
+
+        // Main App component
+        const App = () => {
+            const [company, setCompany] = useState('');
+            const [companyInput, setCompanyInput] = useState('');
+            const [showSuggestions, setShowSuggestions] = useState(false);
+            const [risk, setRisk] = useState('');
+            const [recommendation, setRecommendation] = useState(null);
+            const [error, setError] = useState('');
+            const [recommendationsData, setRecommendationsData] = useState(null);
+            const [loading, setLoading] = useState(false);
+            const [history, setHistory] = useState([]);
+            const [isDarkMode, setIsDarkMode] = useState(false);
+            const companyInputRef = useRef(null);
+
+            // Load CSV data on mount
+            useEffect(() => {
+                setLoading(true);
+                Papa.parse('phase3_recommendations.csv', {
+                    download: true,
+                    header: true,
+                    complete: (result) => {
+                        if (!result.data[0]?.Symbol || !result.data[0]?.Risk_Averse) {
+                            setError('CSV missing required columns (Symbol, Risk_Averse, etc.).');
+                        } else {
+                            setRecommendationsData(result.data);
+                        }
+                        setLoading(false);
+                    },
+                    error: (err) => {
+                        setError('Failed to load phase3_recommendations.csv. Ensure it is in the same directory.');
+                        setLoading(false);
+                    }
+                });
+            }, []);
+
+            // Handle company input and autocomplete
+            const handleCompanyInput = (e) => {
+                const value = e.target.value.toUpperCase();
+                setCompanyInput(value);
+                setCompany('');
+                setShowSuggestions(value.length > 0);
+            };
+
+            const selectCompany = (stock) => {
+                setCompany(stock);
+                setCompanyInput(stock);
+                setShowSuggestions(false);
+            };
+
+            const filteredStocks = stocks.filter(stock => 
+                stock.toUpperCase().includes(companyInput.toUpperCase())
+            );
+
+            // Handle Suggest button click
+            const handleSuggest = () => {
+                setError('');
+                setRecommendation(null);
+
+                if (!company || !risk) {
+                    setError('Please select a company and risk profile.');
+                    return;
+                }
+
+                if (!recommendationsData) {
+                    setError('Recommendations data not loaded.');
+                    return;
+                }
+
+                const row = recommendationsData.find(r => r.Symbol === company);
+                if (!row) {
+                    setError(`No recommendation found for ${company}.`);
+                    return;
+                }
+
+                const rec = row[risk];
+                if (!rec) {
+                    setError(`No ${risk} recommendation for ${company}.`);
+                    return;
+                }
+
+                const result = {
+                    company,
+                    risk,
+                    recommendation: rec,
+                    forecastVolatility: parseFloat(row.Avg_Forecast_Volatility)?.toFixed(4),
+                    medianVolatility: parseFloat(row.Median_Volatility)?.toFixed(4),
+                    smaSlope: parseFloat(row.SMA_Slope)?.toFixed(6)
+                };
+
+                setRecommendation(result);
+                setHistory(prev => [result, ...prev.slice(0, 4)]); // Keep last 5
+            };
+
+            // Toggle dark mode
+            const toggleDarkMode = () => {
+                setIsDarkMode(!isDarkMode);
+                document.documentElement.classList.toggle('dark');
+            };
+
+            // Handle click outside to close suggestions
+            useEffect(() => {
+                const handleClickOutside = (e) => {
+                    if (companyInputRef.current && !companyInputRef.current.contains(e.target)) {
+                        setShowSuggestions(false);
+                    }
+                };
+                document.addEventListener('mousedown', handleClickOutside);
+                return () => document.removeEventListener('mousedown', handleClickOutside);
+            }, []);
+
+            return (
+                <div className="bg-white dark:bg-gray-800 p-8 rounded-lg shadow-lg max-w-lg w-full transition-colors">
+                    <div className="flex justify-between items-center mb-6">
+                        <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100">Stock Recommendation</h1>
+                        <button
+                            className="p-2 rounded-full bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-100 hover:bg-gray-300 dark:hover:bg-gray-600 transition"
+                            onClick={toggleDarkMode}
+                            title={isDarkMode ? "Switch to Light Mode" : "Switch to Dark Mode"}
+                        >
+                            {isDarkMode ? '☀️' : '🌙'}
+                        </button>
+                    </div>
+
+                    {/* Company Input with Autocomplete */}
+                    <div className="mb-4 relative" ref={companyInputRef}>
+                        <label className="block text-gray-700 dark:text-gray-300 mb-2">Company</label>
+                        <input
+                            type="text"
+                            className="w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600"
+                            value={companyInput}
+                            onChange={handleCompanyInput}
+                            placeholder="Type to search (e.g., HDFCBANK)"
+                            onFocus={() => companyInput && setShowSuggestions(true)}
+                        />
+                        {showSuggestions && filteredStocks.length > 0 && (
+                            <ul className="absolute z-10 w-full bg-white dark:bg-gray-700 border rounded mt-1 max-h-40 overflow-auto shadow-lg">
+                                {filteredStocks.map(stock => (
+                                    <li
+                                        key={stock}
+                                        className="p-2 hover:bg-blue-100 dark:hover:bg-gray-600 cursor-pointer text-gray-800 dark:text-gray-100"
+                                        onClick={() => selectCompany(stock)}
+                                    >
+                                        {stock}
+                                    </li>
+                                ))}
+                            </ul>
+                        )}
+                    </div>
+
+                    {/* Risk Profile Selector */}
+                    <div className="mb-6">
+                        <label className="block text-gray-700 dark:text-gray-300 mb-2">Risk Profile</label>
+                        <select
+                            className="w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-gray-100 dark:border-gray-600"
+                            value={risk}
+                            onChange={(e) => setRisk(e.target.value)}
+                        >
+                            <option value="">Select risk profile</option>
+                            {riskProfiles.map(risk => (
+                                <option key={risk} value={risk}>{risk.replace('_', ' ')}</option>
+                            ))}
+                        </select>
+                    </div>
+
+                    {/* Suggest Button */}
+                    <button
+                        className="w-full bg-blue-500 text-white p-2 rounded hover:bg-blue-600 transition disabled:bg-blue-300"
+                        onClick={handleSuggest}
+                        disabled={loading}
+                    >
+                        {loading ? (
+                            <span className="flex items-center justify-center">
+                                <svg className="animate-spin h-5 w-5 mr-2 text-white" viewBox="0 0 24 24">
+                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8h8a8 8 0 01-8 8 8 8 0 01-8-8z" />
+                                </svg>
+                                Loading...
+                            </span>
+                        ) : (
+                            'Suggest'
+                        )}
+                    </button>
+
+                    {/* Result */}
+                    {recommendation && (
+                        <div className="mt-6 p-4 bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300 rounded">
+                            <p className="font-semibold">Recommendation for {recommendation.company} ({recommendation.risk.replace('_', ' ')}):</p>
+                            <p className="text-lg">{recommendation.recommendation}</p>
+                            <p className="mt-2 text-sm">
+                                Forecast Volatility: {recommendation.forecastVolatility || 'N/A'}<br />
+                                Median Volatility: {recommendation.medianVolatility || 'N/A'}<br />
+                                SMA Slope: {recommendation.smaSlope || 'N/A'} {recommendation.smaSlope > 0 ? '(Uptrend)' : recommendation.smaSlope < 0 ? '(Downtrend)' : '(Neutral)'}
+                            </p>
+                        </div>
+                    )}
+
+                    {/* Error */}
+                    {error && (
+                        <div className="mt-6 p-4 bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300 rounded">
+                            <p>{error}</p>
+                        </div>
+                    )}
+
+                    {/* Recommendation History */}
+                    {history.length > 0 && (
+                        <div className="mt-8">
+                            <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-4">Recent Recommendations</h2>
+                            <ul className="space-y-2">
+                                {history.map((item, index) => (
+                                    <li
+                                        key={index}
+                                        className="p-3 bg-gray-50 dark:bg-gray-700 rounded text-gray-700 dark:text-gray-300 flex justify-between items-center"
+                                    >
+                                        <span>{item.company} ({item.risk.replace('_', ' ')}): {item.recommendation}</span>
+                                        <button
+                                            className="text-blue-500 hover:underline text-sm"
+                                            onClick={() => {
+                                                setCompany(item.company);
+                                                setCompanyInput(item.company);
+                                                setRisk(item.risk);
+                                                handleSuggest();
+                                            }}
+                                        >
+                                            Revisit
+                                        </button>
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        // Render the app
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
